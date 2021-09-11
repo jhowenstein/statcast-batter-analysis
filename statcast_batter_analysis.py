@@ -23,14 +23,18 @@ class Batter:
     sz_left = -zone_half_width
     sz_right = zone_half_width
 
-    def __init__(self,name,data):
+    def __init__(self,name,data,process_games=True):
         self.name = name
         self.data = data
 
         self.games = []
         self.atBats = []
 
-        self.process_games()
+        self.analyze_pitch_decision()
+        self.analyze_pitch_location()
+
+        if process_games:
+            self.process_games(process_atBats=process_atBats)
 
     def __str__(self):
         return self.name
@@ -207,6 +211,11 @@ class Batter:
 
     def isCorrectDecision(self):
         self.data['isCorrectDecision'] = self.data['isStrike'] == self.data['isSwing']
+
+    def analyze_pitch_decision(self):
+        self.isStrike()
+        self.isSwing()
+        self.isCorrectDecision()
 
 class Game:
     def __init__(self,gameID,data):
