@@ -79,6 +79,11 @@ class Batter:
     def zone_half_height(self):
         return (self.sz_top - self.sz_btm) / 2
 
+    @property
+    def babip_count(self):
+        babip_df = self.data[self.data['event']=='hit_into_play']
+        return babip_df.shape[0]
+
     def add_game(self,gameID,data):
         self.games.append(Game(gameID,data))
 
@@ -199,6 +204,12 @@ class Batter:
         self.data['prop_plate_z'] = proportional_plate_z
         self.data['norm_plate_x'] = norm_plate_x
 
+    def filter_data_by_location(self,bottom_left,top_right):
+        _df = self.data[(self.data['prop_plate_x'] >= bottom_left[0]) & (self.data['prop_plate_x'] <= top_right[0]) & (
+            self.data['prop_plate_z'] >= bottom_left[1]) & (self.data['prop_plate_z'] <= top_right[1])]
+
+        return _df
+
     def isStrike(self):
         self.data['isStrike'] = (self.data['plate_x'] >= self.sz_left) & (self.data['plate_x'] <= self.sz_right) & (
             self.data['plate_z'] >= self.sz_btm) & (self.data['plate_z'] <= self.sz_top)
@@ -211,6 +222,91 @@ class Batter:
 
     def isCorrectDecision(self):
         self.data['isCorrectDecision'] = self.data['isStrike'] == self.data['isSwing']
+
+    def calculate_total_wOBA(self):
+        woba_df = self.data[self.data['woba_denom']==1]
+
+        batter_woba = woba_df['woba_value'].mean().round(3)
+
+        return batter_woba
+
+    def calculate_zone_wOBA(self):
+        woba_df = self.data[self.data['woba_denom']==1]
+
+        _df = woba_df[woba_df['isStrike']==True]
+
+        zone_woba = _df['woba_value'].mean().round(3)
+
+        return zone_woba
+
+    def calculate_outside_wOBA(self):
+        woba_df = self.data[self.data['woba_denom']==1]
+
+        _df = woba_df[woba_df['isStrike']==False]
+
+        outside_woba = _df['woba_value'].mean().round(3)
+
+        return outside_woba
+
+    def calculate_horizontal_slice_wOBA(self):
+        # High
+        BL = (-1.1,0.5)
+        TR = (1.1,1.1)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        high_woba = woba_df['woba_value'].mean().round(3)
+
+        # Middle
+        BL = (-1.1,-0.5)
+        TR = (1.1,0.5)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        middle_woba = woba_df['woba_value'].mean().round(3)
+
+        # Low
+        BL = (-1.1,-1.1)
+        TR = (1.1,-0.5)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        low_woba = woba_df['woba_value'].mean().round(3)
+
+        return high_woba, middle_woba, low_woba
+
+    def calculate_vertical_slice_wOBA(self):
+        # Inside
+        BL = (-1.1,-1.1)
+        TR = (-0.5,1.1)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        inside_woba = woba_df['woba_value'].mean().round(3)
+
+        # Middle
+        BL = (-0.5,-1.1)
+        TR = (0.5,1.1)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        middle_woba = woba_df['woba_value'].mean().round(3)
+
+        # Outside
+        BL = (0.5,-1.1)
+        TR = (1.1,1.1)
+
+        _df = self.filter_data_by_location(BL,TR)
+        woba_df = _df[_df['woba_denom']==1]
+
+        outside_woba = woba_df['woba_value'].mean().round(3)
+
+        return inside_woba, middle_woba, outside_woba
 
     def analyze_pitch_decision(self):
         self.isStrike()
