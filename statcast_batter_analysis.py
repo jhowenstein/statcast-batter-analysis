@@ -204,11 +204,36 @@ class Batter:
         self.data['prop_plate_z'] = proportional_plate_z
         self.data['norm_plate_x'] = norm_plate_x
 
-    def filter_data_by_location(self,bottom_left,top_right):
-        _df = self.data[(self.data['prop_plate_x'] >= bottom_left[0]) & (self.data['prop_plate_x'] <= top_right[0]) & (
-            self.data['prop_plate_z'] >= bottom_left[1]) & (self.data['prop_plate_z'] <= top_right[1])]
+    def filter_data_by_location(self,bottom_left,top_right,df=None,inplace=False):
+        if df is None:
+            df = self.data
 
-        return _df
+        _df = df[(df['prop_plate_x'] >= bottom_left[0]) & (df['prop_plate_x'] <= top_right[0]) & (
+            df['prop_plate_z'] >= bottom_left[1]) & (df['prop_plate_z'] <= top_right[1])]
+
+        if inplace:
+            df = _df
+        else:
+            return _df
+
+    def filter_data_by_pitch_type(self,pitch_type,df=None,inplace=False):
+        if df is None:
+            df = self.data
+
+        if isinstance(pitch_type,str):
+            _df = df[df['pitch_type']==pitch_type]
+
+        if isinstance(pitch_type,list):
+            _dfs = []
+            for _type in pitch_type:
+                _df = df[df['pitch_type']==_type]
+                _dfs.append(_df)
+            _df = pd.concat(_dfs)
+
+        if inplace:
+            self.data = _df
+        else:
+            return _df
 
     def isStrike(self):
         self.data['isStrike'] = (self.data['plate_x'] >= self.sz_left) & (self.data['plate_x'] <= self.sz_right) & (
@@ -223,15 +248,21 @@ class Batter:
     def isCorrectDecision(self):
         self.data['isCorrectDecision'] = self.data['isStrike'] == self.data['isSwing']
 
-    def calculate_total_wOBA(self):
-        woba_df = self.data[self.data['woba_denom']==1]
+    def calculate_total_wOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
 
         batter_woba = woba_df['woba_value'].mean().round(3)
 
         return batter_woba
 
-    def calculate_zone_wOBA(self):
-        woba_df = self.data[self.data['woba_denom']==1]
+    def calculate_zone_wOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
 
         _df = woba_df[woba_df['isStrike']==True]
 
@@ -239,8 +270,11 @@ class Batter:
 
         return zone_woba
 
-    def calculate_outside_wOBA(self):
-        woba_df = self.data[self.data['woba_denom']==1]
+    def calculate_outside_wOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
 
         _df = woba_df[woba_df['isStrike']==False]
 
@@ -248,12 +282,12 @@ class Batter:
 
         return outside_woba
 
-    def calculate_horizontal_slice_wOBA(self):
+    def calculate_horizontal_slice_wOBA(self,df=None):
         # High
         BL = (-1.1,0.5)
         TR = (1.1,1.1)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         high_woba = woba_df['woba_value'].mean().round(3)
@@ -262,7 +296,7 @@ class Batter:
         BL = (-1.1,-0.5)
         TR = (1.1,0.5)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         middle_woba = woba_df['woba_value'].mean().round(3)
@@ -271,19 +305,19 @@ class Batter:
         BL = (-1.1,-1.1)
         TR = (1.1,-0.5)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         low_woba = woba_df['woba_value'].mean().round(3)
 
         return high_woba, middle_woba, low_woba
 
-    def calculate_vertical_slice_wOBA(self):
+    def calculate_vertical_slice_wOBA(self,df=None):
         # Inside
         BL = (-1.1,-1.1)
         TR = (-0.5,1.1)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         inside_woba = woba_df['woba_value'].mean().round(3)
@@ -292,7 +326,7 @@ class Batter:
         BL = (-0.5,-1.1)
         TR = (0.5,1.1)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         middle_woba = woba_df['woba_value'].mean().round(3)
@@ -301,10 +335,105 @@ class Batter:
         BL = (0.5,-1.1)
         TR = (1.1,1.1)
 
-        _df = self.filter_data_by_location(BL,TR)
+        _df = self.filter_data_by_location(BL,TR,df=df)
         woba_df = _df[_df['woba_denom']==1]
 
         outside_woba = woba_df['woba_value'].mean().round(3)
+
+        return inside_woba, middle_woba, outside_woba
+
+    ### Functions for Expected wOBA
+    def calculate_total_xwOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
+
+        batter_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        return batter_woba
+
+    def calculate_zone_xwOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
+
+        _df = woba_df[woba_df['isStrike']==True]
+
+        zone_woba = _df['estimated_woba_using_speedangle'].mean().round(3)
+
+        return zone_woba
+
+    def calculate_outside_xwOBA(self,df=None):
+        if df is None:
+            df = self.data
+
+        woba_df = df[df['woba_denom']==1]
+
+        _df = woba_df[woba_df['isStrike']==False]
+
+        outside_woba = _df['estimated_woba_using_speedangle'].mean().round(3)
+
+        return outside_woba
+
+    def calculate_horizontal_slice_xwOBA(self,df=None):
+        # High
+        BL = (-1.1,0.5)
+        TR = (1.1,1.1)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        high_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        # Middle
+        BL = (-1.1,-0.5)
+        TR = (1.1,0.5)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        middle_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        # Low
+        BL = (-1.1,-1.1)
+        TR = (1.1,-0.5)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        low_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        return high_woba, middle_woba, low_woba
+
+    def calculate_vertical_slice_xwOBA(self,df=None):
+        # Inside
+        BL = (-1.1,-1.1)
+        TR = (-0.5,1.1)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        inside_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        # Middle
+        BL = (-0.5,-1.1)
+        TR = (0.5,1.1)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        middle_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+
+        # Outside
+        BL = (0.5,-1.1)
+        TR = (1.1,1.1)
+
+        _df = self.filter_data_by_location(BL,TR,df=df)
+        woba_df = _df[_df['woba_denom']==1]
+
+        outside_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
 
         return inside_woba, middle_woba, outside_woba
 
@@ -349,6 +478,16 @@ class AtBat:
     @property
     def result(self):
         return self.result_pitch['event_result'].values[0]
+
+    @property
+    def isWalk(self):
+        return self.result == 'walk'
+
+    @property
+    def isStrikeout(self):
+        return self.result == 'strikeout' or self.result == 'strikeout_double_play'
+
+    
 
     
 
