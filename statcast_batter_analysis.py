@@ -34,18 +34,22 @@ class Batter:
         self.analyze_pitch_location()
 
         if process_games:
-            self.process_games(process_atBats=process_atBats)
+            self.process_games()
 
     def __str__(self):
         return self.name
 
     @property
     def sz_top(self):
-        return self.data['sz_top'].mean().round(3)
+        precision = 3
+        mean_top = self.data['sz_top'].mean()
+        return round(mean_top, precision)
 
     @property
     def sz_btm(self):
-        return self.data['sz_bot'].mean().round(3)
+        precision = 3
+        mean_btm = self.data['sz_bot'].mean()
+        return round(mean_btm, precision)
 
     @property
     def sz_vert_step(self):
@@ -84,6 +88,31 @@ class Batter:
         babip_df = self.data[self.data['event']=='hit_into_play']
         return babip_df.shape[0]
 
+    @property
+    def PA(self):
+        count = 0
+        for game in self.games:
+            count += len(game.atBats)
+        return count
+
+    @property
+    def K(self):
+        count = 0
+        for game in self.games:
+            for atBat in game.atBats:
+                if atBat.isStrikeout:
+                    count += 1
+        return count
+
+    @property
+    def BB(self):
+        count = 0
+        for game in self.games:
+            for atBat in game.atBats:
+                if atBat.isWalk:
+                    count += 1
+        return count
+
     def add_game(self,gameID,data):
         self.games.append(Game(gameID,data))
 
@@ -109,6 +138,12 @@ class Batter:
 
                 atBat_tag = int(f'{game_ID}-{atBat_number}')
                 self.add_atBat(atBat_tag,atBat_data)
+
+    def sort_games(self):
+        def sortFunc(game):
+            return int(game.date.replace('-',''))
+
+        self.games.sort(key=sortFunc)
 
     def filter_data(self, key, value_key=None, high_value=None, low_value=None, in_place=True):
         pass
@@ -192,6 +227,22 @@ class Batter:
         proportional_plate_x = norm_plate_x / self.zone_half_width
         proportional_plate_z = (z_loc - self.sz_center_height) / self.zone_half_height
 
+        prop_dist_to_zone = []
+        for px, pz in zip(proportional_plate_x, proportional_plate_z):
+            if abs(px) > 1 and abs(pz) > 1:
+                prop_dist = (px**2 + pz**2)**.5
+            elif abs(px) > 1:
+                prop_dist = abs(px)
+            elif abs(pz) > 1:
+                prop_dist = abs(pz)
+            else:
+                prop_dist = max(abs(px),abs(pz))
+            
+            prop_dist_to_zone.append(prop_dist)
+
+        prop_dist_to_zone = np.array(prop_dist_to_zone)
+
+
         self.data['dist_to_center'] = dist_to_center
         self.data['horiz_dist_to_edge'] = horiz_dist_to_edge
         self.data['dist_to_top'] = dist_to_top
@@ -203,6 +254,7 @@ class Batter:
         self.data['prop_plate_x'] = proportional_plate_x
         self.data['prop_plate_z'] = proportional_plate_z
         self.data['norm_plate_x'] = norm_plate_x
+        self.data['prop_dist_to_zone'] = prop_dist_to_zone
 
     def filter_data_by_location(self,bottom_left,top_right,df=None,inplace=False):
         if df is None:
@@ -442,6 +494,64 @@ class Batter:
         self.isSwing()
         self.isCorrectDecision()
 
+    def count_plate_appearances(self,start=None,end=None):
+        count = 0
+        for game in self.games:
+            count += len(game.atBats)
+        return count
+
+    def count_strikeouts(self,start=None,end=None):
+        count = 0
+        for game in self.games:
+            for atBat in game.atBats:
+                if atBat.isStrikeout:
+                    count += 1
+        return count
+
+    def count_walks(self,start=None,end=None):
+        count = 0
+        for game in self.games:
+            for atBat in game.atBats:
+                if atBat.isWalk:
+                    count += 1
+        return count
+
+    def calculate_strikeout_rate(self,start=None,end=None,precision=3):
+        K = self.count_strikeouts(start=start,end=end)
+        PA = self.count_plate_appearances(start=start,end=end)
+        rate = K / PA
+        return round(rate, precision)
+    
+    def calculate_walk_rate(self,start=None,end=None,precision=3):
+        K = self.count_walks(start=start,end=end)
+        PA = self.count_plate_appearances(start=start,end=end)
+        rate = K / PA
+        return round(rate, precision)
+
+    def calculate_chase_rate(self,start=None,end=None,precision=3):
+        not_strike_df = self.data[self.data['isStrike']==False]
+        batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
+        chase_rate = batter_incorrect.shape[0] / not_strike_df.shape[0]
+        return round(chase_rate,precision)
+
+    def calculate_chase_rate_plus(self,start=None,end=None,precision=3):
+        not_strike_df = self.data[self.data['isStrike']==False]
+        batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
+
+        scaling = batter_incorrect['prop_dist_to_zone'].mean()
+
+        chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
+        return round(chase_rate,precision)
+
+    def calculate_chase_rate_plus_rms(self,start=None,end=None,precision=3):
+        not_strike_df = self.data[self.data['isStrike']==False]
+        batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
+
+        scaling = np.sqrt((batter_incorrect['prop_dist_to_zone']**2).mean())
+        
+        chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
+        return round(chase_rate,precision)
+
 class Game:
     def __init__(self,gameID,data):
         self.gameID = gameID
@@ -450,6 +560,10 @@ class Game:
         self.atBats = []
 
         self.process_atBats()
+
+    @property
+    def date(self):
+        return self.data['game_date'].values[0]
 
     def add_atBat(self,number,data):
         self.atBats.append(AtBat(number,data))
