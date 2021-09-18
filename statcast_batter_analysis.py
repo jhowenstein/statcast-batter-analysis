@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 swing_events = ['hit_into_play','foul','swinging_strike','swinging_strike_blocked']
-contact_swing_events = ['hit_into_play','foul']
+contact_events = ['hit_into_play','foul']
 no_contact_swing_events = ['swinging_strike','swinging_strike_blocked']
 
 batter_outcome_events = ['single', 'field_out', 'grounded_into_double_play',
@@ -300,6 +300,40 @@ class Batter:
     def isCorrectDecision(self):
         self.data['isCorrectDecision'] = self.data['isStrike'] == self.data['isSwing']
 
+    def isContact(self):
+        self.data['isContact'] = (self.data['event']=='hit_into_play') | (self.data['event']=='foul')
+
+    def calculate_contact_rate(self,start=None,end=None,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        nContact = sum(df['isContact'].values.astype(int))
+        nSwing = sum(df['isSwing'].values.astype(int))
+
+        contact_rate = nContact / nSwing
+
+        return round(contact_rate, precision)
+
+    def calculate_zone_contact_rate(self,start=None,end=None,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        _df = df[df['isStrike']==True]
+
+        contact_rate = self.calculate_contact_rate(start=start,end=end,df=_df,precision=precision)
+
+        return contact_rate
+
+    def calculate_outside_contact_rate(self,start=None,end=None,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        _df = df[df['isStrike']==False]
+
+        contact_rate = self.calculate_contact_rate(start=start,end=end,df=_df,precision=precision)
+
+        return contact_rate
+
     def calculate_total_wOBA(self,df=None):
         if df is None:
             df = self.data
@@ -492,6 +526,7 @@ class Batter:
     def analyze_pitch_decision(self):
         self.isStrike()
         self.isSwing()
+        self.isContact()
         self.isCorrectDecision()
 
     def count_plate_appearances(self,start=None,end=None):
