@@ -334,6 +334,48 @@ class Batter:
 
         return contact_rate
 
+    def calculate_max_exit_velocity(self,start=None,end=None,df=None,precision=1,n=1):
+        if df is None:
+            df = self.data
+
+        df = df[df['launch_speed'].notna()]
+        exit_velos = df['launch_speed'].values
+        exit_velos.sort()
+
+        if len(exit_velos) > (n-1):
+            max_ev = exit_velos[-n:].mean()
+            return round(max_ev,precision)
+        else:
+            return None
+        
+    def calculate_average_exit_velocity(self,start=None,end=None,df=None,precision=1):
+        if df is None:
+            df = self.data
+
+        df = df[df['launch_speed'].notna()]
+        exit_velos = df['launch_speed'].values
+
+        if len(exit_velos) > 0:
+            avg_ev = exit_velos.mean()
+            return round(avg_ev,precision)
+        else:
+            return None
+
+    def calculate_percent_hard_hit(self,start=None,end=None,df=None,precision=3,threshold=.9):
+        if df is None:
+            df = self.data
+
+        max_ev = self.calculate_max_exit_velocity(n=3)
+
+        df = df[df['launch_speed'].notna()]
+        exit_velos = df['launch_speed'].values
+        
+        hard_hit = sum((exit_velos>(threshold * max_ev)).astype(int))
+        total_hit = len(exit_velos)
+
+        hard_hit_rate = hard_hit / total_hit
+        return round(hard_hit_rate, precision)
+
     def calculate_total_wOBA(self,df=None):
         if df is None:
             df = self.data
@@ -583,6 +625,15 @@ class Batter:
         batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
 
         scaling = np.sqrt((batter_incorrect['prop_dist_to_zone']**2).mean())
+        
+        chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
+        return round(chase_rate,precision)
+
+    def calculate_chase_rate_plus_exp(self,start=None,end=None,precision=3):
+        not_strike_df = self.data[self.data['isStrike']==False]
+        batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
+
+        scaling = (batter_incorrect['prop_dist_to_zone']**batter_incorrect['prop_dist_to_zone']).mean()
         
         chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
         return round(chase_rate,precision)
