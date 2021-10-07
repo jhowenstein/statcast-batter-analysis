@@ -84,6 +84,14 @@ class Batter:
         return (self.sz_top - self.sz_btm) / 2
 
     @property
+    def zone_height(self):
+        return (self.sz_top - self.sz_btm)
+
+    @property
+    def zone_width(self):
+        return 2 * self.zone_half_width
+
+    @property
     def babip_count(self):
         babip_df = self.data[self.data['event']=='hit_into_play']
         return babip_df.shape[0]
@@ -292,7 +300,7 @@ class Batter:
             self.data['plate_z'] >= self.sz_btm) & (self.data['plate_z'] <= self.sz_top)
 
     def isSwing(self):
-        swing_events = ['hit_into_play','foul','swinging_strike','swinging_strike_blocked']
+        # swing_events = ['hit_into_play','foul','swinging_strike','swinging_strike_blocked']
         
         self.data['isSwing'] = (self.data['event']=='hit_into_play') | (self.data['event']=='foul') | (
             self.data['event']=='swinging_strike') | (self.data['event']=='swinging_strike_blocked')
@@ -361,20 +369,184 @@ class Batter:
         else:
             return None
 
-    def calculate_percent_hard_hit(self,start=None,end=None,df=None,precision=3,threshold=.9):
+    def calculate_average_launch_angle(self,start=None,end=None,df=None,precision=1):
         if df is None:
             df = self.data
 
-        max_ev = self.calculate_max_exit_velocity(n=3)
+        df = df[df['launch_angle'].notna()]
+        launch_angles = df['launch_angle'].values
+
+        if len(launch_angles) > 0:
+            avg_la = launch_angles.mean()
+            return round(avg_la,precision)
+        else:
+            return None
+
+
+    def calculate_estimated_bat_speed(self,start=None,end=None,df=None,top_percentile=0.1,precision=1):
+        if df is None:
+            df = self.data
+
+        e = 0.2
+
+        batted_ball_df = df[(df['launch_speed'].notna()) & (df['launch_angle'].notna()) & (df['event']=='hit_into_play')]
+
+        batted_ball_df = batted_ball_df.sort_values(by='launch_speed',ascending=False)
+
+        total_babip_count = batted_ball_df.shape[0]
+
+        top_babip_count = int(top_percentile * total_babip_count)
+
+        if total_babip_count == 0:
+            return None
+        if top_babip_count == 0:
+            top_babip_count = 1
+
+        top_ev_mean = batted_ball_df['launch_speed'].values[:top_babip_count].mean()
+
+        avg_pitch_speeds = batted_ball_df['release_speed'].values[:top_babip_count].mean()
+
+        estimated_bat_speed = (top_ev_mean / (1 + e)) - (avg_pitch_speeds * e)
+
+        return round(estimated_bat_speed, precision)
+
+    def calculate_estimated_attack_angle(self,start=None,end=None,df=None,top_percentile=0.1,precision=1):
+        if df is None:
+            df = self.data
+
+        e = 0.2
+
+        batted_ball_df = df[(df['launch_speed'].notna()) & (df['launch_angle'].notna()) & (df['event']=='hit_into_play')]
+
+        batted_ball_df = batted_ball_df.sort_values(by='launch_speed',ascending=False)
+
+        total_babip_count = batted_ball_df.shape[0]
+
+        top_babip_count = int(top_percentile * total_babip_count)
+
+        if total_babip_count == 0:
+            return None
+        if top_babip_count == 0:
+            top_babip_count = 1
+
+        top_la_mean = batted_ball_df['launch_angle'].values[:top_babip_count].mean()
+
+        return round(top_la_mean, precision)
+
+    def calculate_quality_of_contact(self,start=None,end=None,df=None,precision=3,verbose=False,top_percentile=0.1):
+        whiff_value = 0
+        foul_value = 0
+
+        if df is None:
+            df = self.data
+
+        # Quality of Contact = 1 + (Exit Velocity – Bat Speed)/(Pitch Speed + Bat Speed)
+
+        swing_df = df[df['isSwing']==True]
+
+        babip_df = swing_df[swing_df['event']=='hit_into_play']
+        whiff_df = swing_df[(swing_df['event']=='swinging_strike') & (swing_df['event']=='swinging_strike_blocked')]
+        foul_df = swing_df[swing_df['event']=='foul']
+
+        foul_with_launch = foul_df[(foul_df['launch_speed'].notna()) & (foul_df['launch_angle'].notna())]
+        foul_no_launch = foul_df[(foul_df['launch_speed'].isna()) | (foul_df['launch_angle'].isna())]
+        bat_speed = self.calculate_estimated_bat_speed(df=df,top_percentile=top_percentile)
+
+        babip_df['quality of contact'] = 1 + (babip_df['launch_speed'] - bat_speed) / (babip_df['release_speed'] + bat_speed)
+        whiff_df['quality of contact'] = whiff_value
+        foul_with_launch['quality of contact'] = 1 + (foul_with_launch['launch_speed'] - bat_speed) / (foul_with_launch['release_speed'] + bat_speed)
+        foul_no_launch['quality of contact'] = foul_value
+
+        aggregate_df = pd.concat([babip_df,whiff_df,foul_with_launch,foul_no_launch])
+
+        total_qoc = aggregate_df['quality of contact'].mean()
+
+        babip_qoc = babip_df['quality of contact'].mean()
+        foul_qoc = foul_with_launch['quality of contact'].mean()
+
+        if verbose:
+            output = (round(val, precision) for val in (total_qoc,babip_qoc,foul_qoc))
+            return output
+        else:
+            return round(total_qoc, precision)
+
+
+    def display_launchAngle_vs_exitVelocity(self,start=None,end=None,df=None,top_percentile=0.1):
+        if df is None:
+            df = self.data
+
+        batted_ball_df = df[(df['launch_speed'].notna()) & (df['launch_angle'].notna()) & (df['event']=='hit_into_play')]
+
+        fig,ax = plt.subplots(figsize=(10,6))
+
+        if top_percentile is not None:
+            
+            batted_ball_df = batted_ball_df.sort_values(by='launch_speed',ascending=False)
+            N = batted_ball_df.shape[0]
+
+            if top_percentile < 1:
+                top_percentile_N = int(top_percentile * N)
+            else:
+                top_percentile_N = top_percentile
+
+            top_ev = batted_ball_df['launch_speed'].values[:top_percentile_N]
+            top_la = batted_ball_df['launch_angle'].values[:top_percentile_N]
+
+            btm_ev = batted_ball_df['launch_speed'].values[top_percentile_N:]
+            btm_la = batted_ball_df['launch_angle'].values[top_percentile_N:]
+
+            top_ev_mean = top_ev.mean()
+            top_la_mean = top_la.mean()
+
+            e = 0.2
+            estimated_bat_speed = (top_ev_mean/(1+e)) - (batted_ball_df['release_speed'].values[:top_percentile_N].mean() * e)
+
+            print(f'Top EV Mean: {top_ev_mean:.1f} - Top EV LA Mean: {top_la_mean:.1f}')
+            print(f'Estimated Bat Speed: {estimated_bat_speed:.1f}')
+
+            ax.scatter(top_ev,top_la,color='tab:red',alpha=.5)
+            ax.scatter(btm_ev,btm_la,color='tab:blue',alpha=.5)
+            ax.scatter(top_ev_mean,top_la_mean,color='k')
+
+        else:
+            exit_velos = batted_ball_df['launch_speed'].values
+            launch_angles = batted_ball_df['launch_angle'].values
+
+            ax.scatter(exit_velos,launch_angles)
+
+
+        ax.grid()
+
+        plt.show()
+
+    def calculate_average_to_max_exit_velocity_ratio(self,start=None,end=None,df=None,precision=3,max_ev_samples=3):
+        if df is None:
+            df = self.data
+
+        avg_ev = self.calculate_average_exit_velocity(df=df)
+        max_ev = self.calculate_max_exit_velocity(df=df,n=max_ev_samples)
+
+        ratio = avg_ev/max_ev
+        return round(ratio,precision)
+
+
+    def calculate_percent_above_exit_velocity_threshold(self,threshold,start=None,end=None,df=None,precision=3,max_ev_samples=3):
+        if df is None:
+            df = self.data
 
         df = df[df['launch_speed'].notna()]
         exit_velos = df['launch_speed'].values
-        
-        hard_hit = sum((exit_velos>(threshold * max_ev)).astype(int))
-        total_hit = len(exit_velos)
 
-        hard_hit_rate = hard_hit / total_hit
-        return round(hard_hit_rate, precision)
+        if threshold < 1:
+            max_ev = self.calculate_max_exit_velocity(n=max_ev_samples)
+            hits_above = sum((exit_velos > (threshold * max_ev)).astype(int))
+        else:
+            hits_above = sum((exit_velos > threshold).astype(int))
+
+        total_hits = len(exit_velos)
+
+        percent = hits_above / total_hits
+        return round(percent, precision)
 
     def calculate_total_wOBA(self,df=None):
         if df is None:
