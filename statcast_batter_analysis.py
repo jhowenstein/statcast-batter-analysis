@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import scipy as sp
+
+from scipy import signal
 
 import os
 import glob
@@ -548,17 +551,17 @@ class Batter:
         percent = hits_above / total_hits
         return round(percent, precision)
 
-    def calculate_total_wOBA(self,df=None):
+    def calculate_total_wOBA(self,df=None, precision=3):
         if df is None:
             df = self.data
 
         woba_df = df[df['woba_denom']==1]
 
-        batter_woba = woba_df['woba_value'].mean().round(3)
+        batter_woba = woba_df['woba_value'].mean()
 
-        return batter_woba
+        return round(batter_woba,precision)
 
-    def calculate_zone_wOBA(self,df=None):
+    def calculate_zone_wOBA(self,df=None, precision=3):
         if df is None:
             df = self.data
 
@@ -566,11 +569,11 @@ class Batter:
 
         _df = woba_df[woba_df['isStrike']==True]
 
-        zone_woba = _df['woba_value'].mean().round(3)
+        zone_woba = _df['woba_value'].mean()
 
-        return zone_woba
+        return round(zone_woba,precision)
 
-    def calculate_outside_wOBA(self,df=None):
+    def calculate_outside_wOBA(self,df=None,precision=3):
         if df is None:
             df = self.data
 
@@ -578,9 +581,9 @@ class Batter:
 
         _df = woba_df[woba_df['isStrike']==False]
 
-        outside_woba = _df['woba_value'].mean().round(3)
+        outside_woba = _df['woba_value'].mean()
 
-        return outside_woba
+        return round(outside_woba,precision)
 
     def calculate_horizontal_slice_wOBA(self,df=None):
         # High
@@ -809,6 +812,122 @@ class Batter:
         
         chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
         return round(chase_rate,precision)
+
+    def calculate_guassian_heatmap(self,start=None,end=None,df=None,bin_sigma=4,scale_key='estimated_woba_using_speedangle',blur_sigma=5):
+        baseball_diameter = 0.25  # Diameter of baseball in ft (3in)
+        baseball_radius = baseball_diameter / 2
+        prop_diameter = baseball_diameter / self.zone_half_width
+
+        strikezone_bins = 60
+        zone_center = strikezone_bins * 1.5
+        prop_bin_width = 2 / strikezone_bins
+
+        s = signal.gaussian(4*bin_sigma+1,bin_sigma)
+        kernel_width = int(len(s) / 2)
+
+        kernel_length = len(s)
+        kernel = np.zeros((kernel_length,kernel_length))
+        for i in np.arange(kernel_length):
+            for j in np.arange(kernel_length):
+                kernel[i,j] = s[i] * s[j]
+
+        bins = np.zeros((strikezone_bins*3,strikezone_bins*3))
+
+        if df is None:
+            df = self.data[self.data['estimated_woba_using_speedangle'].notna()]
+
+        for i in df.index:
+            pitch = df.loc[i]
+
+            xLoc = pitch.loc['prop_plate_x']
+            yLoc = pitch.loc['prop_plate_z']
+            
+            if np.isnan(pitch.loc['prop_plate_x']) or np.isnan(pitch.loc['prop_plate_z']):
+                continue
+            
+            xBin = int(zone_center + pitch.loc['prop_plate_x'] / prop_bin_width)
+            yBin = int(zone_center + pitch.loc['prop_plate_z'] / prop_bin_width)
+            
+            if yBin < kernel_width or yBin > (strikezone_bins*3 - kernel_width - 1):
+                continue
+            if xBin < kernel_width or xBin > (strikezone_bins*3 - kernel_width - 1):
+                continue
+            
+            bins[yBin-kernel_width:yBin+kernel_width+1,xBin-kernel_width:xBin+kernel_width+1] += (kernel * pitch.loc[scale_key])
+
+        blurred_bins = sp.ndimage.gaussian_filter(bins,sigma=blur_sigma)
+
+        return blurred_bins
+
+    def plot_heatmap(self,bins,scale_reference=0,display=True,output=False):
+        fig,ax = plt.subplots(figsize=(10,10))
+
+        im = ax.matshow(bins - scale_reference,cmap='bwr')
+        ax.plot([60,120,120,60,60],[120,120,60,60,120],color='w')
+        ax.plot()
+        plt.colorbar(im)
+
+        ax.set_xticks(np.arange(-.5,180,30))
+        ax.set_xticklabels(np.arange(-3,3.1,1))
+
+        ax.set_yticks(np.arange(-.5,180,30))
+        ax.set_yticklabels(np.arange(3,-3.1,-1))
+
+        if output:
+            pass
+        if display:
+            plt.show()
+
+    def plot_wOBA_heatmap(self,df=None,bin_sigma=4,blur_sigma=5):
+        bins = self.calculate_guassian_heatmap(df=df,bin_sigma=bin_sigma,blur_sigma=blur_sigma)
+
+        zone_median = np.median(bins[60:121,60:121])
+
+        self.plot_heatmap(bins,scale_reference=zone_median)
+
+    def plot_pitch_scatter(self,df=None):
+        if df is None:
+            df = self.data
+
+        swing_df = df[df['isSwing']==True]
+        no_swing_df = df[df['isSwing']==False]
+
+        babip_df = swing_df[swing_df['event']=='hit_into_play']
+        foul_df = swing_df[swing_df['event']=='foul']
+
+        whiff_df = df[(df['isSwing']==True) & (df['isContact']==False)]
+
+        BL = (-1,-1)
+        TL = (-1,1)
+        TR = (1,1)
+        BR = (1,-1)
+
+        fig,ax = plt.subplots(figsize=(10,10))
+
+        x = [it[0] for it in (BL,TL,TR,BR,BL)]
+        y = [it[1] for it in (BL,TL,TR,BR,BL)]
+
+        ax.plot(x,y,color='k')
+
+        # Horizontals
+        ax.plot([-1,1],[0.333,0.333],color='k',alpha=.5)
+        ax.plot([-1,1],[-0.333,0.-.333],color='k',alpha=.5)
+
+        # Verticals
+        ax.plot([-0.333,-0.333],[1,-1],color='k',alpha=.5)
+        ax.plot([0.333,0.333],[1,-1],color='k',alpha=.5)
+
+        ax.scatter(babip_df['prop_plate_x'],babip_df['prop_plate_z'],color='tab:blue',alpha=.4)
+        ax.scatter(no_swing_df['prop_plate_x'],no_swing_df['prop_plate_z'],color='k',alpha=.3)
+
+        ax.scatter(whiff_df['prop_plate_x'],whiff_df['prop_plate_z'],color='tab:red',alpha=.4,marker='x')
+        ax.scatter(foul_df['prop_plate_x'],foul_df['prop_plate_z'],color='tab:red',alpha=.4,marker='o')
+
+        ax.grid()
+
+        ax.set_xlim(-3,3)
+        ax.set_ylim(-3,3)
+        plt.show()
 
 class Game:
     def __init__(self,gameID,data):
