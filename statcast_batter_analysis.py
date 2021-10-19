@@ -842,11 +842,11 @@ class Batter:
             xLoc = pitch.loc['prop_plate_x']
             yLoc = pitch.loc['prop_plate_z']
             
-            if np.isnan(pitch.loc['prop_plate_x']) or np.isnan(pitch.loc['prop_plate_z']):
+            if np.isnan(xLoc) or np.isnan(yLoc):
                 continue
             
-            xBin = int(zone_center + pitch.loc['prop_plate_x'] / prop_bin_width)
-            yBin = int(zone_center + pitch.loc['prop_plate_z'] / prop_bin_width)
+            xBin = int(zone_center + xLoc / prop_bin_width)
+            yBin = int(zone_center + yLoc / prop_bin_width)
             
             if yBin < kernel_width or yBin > (strikezone_bins*3 - kernel_width - 1):
                 continue
