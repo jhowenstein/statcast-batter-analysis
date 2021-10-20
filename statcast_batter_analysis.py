@@ -136,6 +136,7 @@ class Batter:
         for game_ID in game_IDs:
             game_data = self.data[self.data['game_pk']==game_ID]
             self.add_game(f'{game_ID}',game_data)
+        self.sort_games()
 
     def process_atBats(self):
         game_IDs = self.data['game_pk'].unique()
@@ -780,8 +781,11 @@ class Batter:
         rate = K / PA
         return round(rate, precision)
 
-    def calculate_chase_rate(self,start=None,end=None,precision=3):
-        not_strike_df = self.data[self.data['isStrike']==False]
+    def calculate_chase_rate(self,df=None,start=None,end=None,precision=3):
+        if df is None:
+            df = self.data
+
+        not_strike_df = df[df['isStrike']==False]
         batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
         chase_rate = batter_incorrect.shape[0] / not_strike_df.shape[0]
         return round(chase_rate,precision)
@@ -794,6 +798,26 @@ class Batter:
 
         chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
         return round(chase_rate,precision)
+
+    def calculate_correct_swing_decision_rate(self,df=None,start=None,end=None,precision=3):
+        if df is None:
+            df = self.data
+
+        batter_correct = df[df['isCorrectDecision']==True]
+        correct_rate = batter_correct.shape[0] / df.shape[0]
+
+        return round(correct_rate,precision)
+
+    def calculate_chase_rate_linear_scaling(self,df=None,start=None,end=None,precision=3):
+        if df is None:
+            df = self.data
+
+        not_strike_df = df[df['isStrike']==False]
+        batter_incorrect = not_strike_df[not_strike_df['isCorrectDecision']==False]
+
+        scaling = batter_incorrect['prop_dist_to_zone'].mean()
+
+        return round(scaling,precision)
 
     def calculate_chase_rate_plus_rms(self,start=None,end=None,precision=3):
         not_strike_df = self.data[self.data['isStrike']==False]
@@ -941,6 +965,9 @@ class Game:
     @property
     def date(self):
         return self.data['game_date'].values[0]
+
+    def __str__(self):
+        return self.date
 
     def add_atBat(self,number,data):
         self.atBats.append(AtBat(number,data))
