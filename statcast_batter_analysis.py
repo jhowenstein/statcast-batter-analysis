@@ -953,6 +953,44 @@ class Batter:
         ax.set_ylim(-3,3)
         plt.show()
 
+    def return_data_by_index(self,start=None,end=None):
+        if start is None:
+            start = 0
+        if end is None:
+            end = len(self.games)
+        
+        _dfs = []
+        for game in self.games[start:end]:
+            _dfs.append(game.data)
+            
+        _df = pd.concat(_dfs)
+        
+        return _df
+
+    def return_data_by_date(self,start=None,end=None):
+        if start is None:
+            start = self.games[0].date
+        if end is None:
+            end = self.games[-1].date
+        
+        _dfs = []
+        for game in self.games:
+            start_int = int(start.replace('-',''))
+            game_int = int(game.date.replace('-',''))
+            end_int = int(end.replace('-',''))
+            
+            if start_int > game_int:
+                continue
+                
+            if game_int > end_int:
+                break
+                
+            _dfs.append(game.data)
+            
+        _df = pd.concat(_dfs)
+        
+        return _df
+
 class Game:
     def __init__(self,gameID,data):
         self.gameID = gameID
