@@ -26,6 +26,10 @@ class Batter:
     sz_left = -zone_half_width
     sz_right = zone_half_width
 
+    strikezone_bins = 60
+    zone_bin_center = strikezone_bins * 1.5
+    prop_bin_width = 2 / strikezone_bins
+
     def __init__(self,name,data,process_games=True):
         self.name = name
         self.data = data
@@ -838,13 +842,12 @@ class Batter:
         return round(chase_rate,precision)
 
     def calculate_guassian_heatmap(self,start=None,end=None,df=None,bin_sigma=4,scale_key='estimated_woba_using_speedangle',blur_sigma=5):
+        if df is None:
+            df = self.data
+
         baseball_diameter = 0.25  # Diameter of baseball in ft (3in)
         baseball_radius = baseball_diameter / 2
         prop_diameter = baseball_diameter / self.zone_half_width
-
-        strikezone_bins = 60
-        zone_center = strikezone_bins * 1.5
-        prop_bin_width = 2 / strikezone_bins
 
         s = signal.gaussian(4*bin_sigma+1,bin_sigma)
         kernel_width = int(len(s) / 2)
@@ -855,13 +858,12 @@ class Batter:
             for j in np.arange(kernel_length):
                 kernel[i,j] = s[i] * s[j]
 
-        bins = np.zeros((strikezone_bins*3,strikezone_bins*3))
+        bins = np.zeros((self.strikezone_bins*3,self.strikezone_bins*3))
 
-        if df is None:
-            df = self.data[self.data['estimated_woba_using_speedangle'].notna()]
+        _df = df[df['estimated_woba_using_speedangle'].notna()]
 
-        for i in df.index:
-            pitch = df.loc[i]
+        for i in _df.index:
+            pitch = _df.loc[i]
 
             xLoc = pitch.loc['prop_plate_x']
             yLoc = pitch.loc['prop_plate_z']
@@ -869,12 +871,12 @@ class Batter:
             if np.isnan(xLoc) or np.isnan(yLoc):
                 continue
             
-            xBin = int(zone_center + xLoc / prop_bin_width)
-            yBin = int(zone_center + yLoc / prop_bin_width)
+            xBin = int(self.zone_bin_center + xLoc / self.prop_bin_width)
+            yBin = int(self.zone_bin_center + yLoc / self.prop_bin_width)
             
-            if yBin < kernel_width or yBin > (strikezone_bins*3 - kernel_width - 1):
+            if yBin < kernel_width or yBin > (self.strikezone_bins*3 - kernel_width - 1):
                 continue
-            if xBin < kernel_width or xBin > (strikezone_bins*3 - kernel_width - 1):
+            if xBin < kernel_width or xBin > (self.strikezone_bins*3 - kernel_width - 1):
                 continue
             
             bins[yBin-kernel_width:yBin+kernel_width+1,xBin-kernel_width:xBin+kernel_width+1] += (kernel * pitch.loc[scale_key])
@@ -990,6 +992,145 @@ class Batter:
         _df = pd.concat(_dfs)
         
         return _df
+
+    def calculate_approach_score(self,df=None,ball_value=None,strike_value=None,precision=2):
+        if df is None:
+            df = self.data[self.data['isStrike']==True]
+
+        swings = df[df['isSwing']==True]
+        takes = df[df['isSwing']==False]
+
+        #print(df.shape)
+
+        bins = self.calculate_guassian_heatmap(df=df)
+
+        #print(f'Bin Max: {np.max(bins):.1f}')
+
+        if ball_value is not None and strike_value is not None:
+            _swings = swings[(swings['balls']==ball_value) & (swings['strikes']==strike_value)]
+            _takes = takes[(takes['balls']==ball_value) & (takes['strikes']==strike_value)]
+        if ball_value is not None:
+            _swings = swings[swings['balls']==ball_value]
+            _takes = takes[takes['balls']==ball_value]
+        if strike_value is not None:
+            _swings = swings[swings['strikes']==strike_value]
+            _takes = takes[takes['strikes']==strike_value]
+        else:
+            _swings = swings
+            _takes = takes
+
+        print(_swings.shape)
+        print(_takes.shape)
+
+        #print(f'{ball_value}-{strike_value}')
+        #print(_swings.shape[0])
+        #print(_takes.shape[0])
+
+        swing_approach_score = 0
+        swing_count = 0
+        for i in _swings.index:
+            pitch = _swings.loc[i]
+
+            xLoc = pitch.loc['prop_plate_x']
+            yLoc = pitch.loc['prop_plate_z']
+            
+            if np.isnan(xLoc) or np.isnan(yLoc):
+                continue
+            
+            xBin = int(self.zone_bin_center + xLoc / self.prop_bin_width)
+            yBin = int(self.zone_bin_center + yLoc / self.prop_bin_width)
+            
+            bin_value = bins[yBin,xBin]
+            
+            swing_approach_score += bin_value
+            swing_count += 1
+
+        take_approach_score = 0
+        take_count = 0
+        for i in _takes.index:
+            pitch = _takes.loc[i]
+
+            xLoc = pitch.loc['prop_plate_x']
+            yLoc = pitch.loc['prop_plate_z']
+            
+            if np.isnan(xLoc) or np.isnan(yLoc):
+                continue
+            
+            xBin = int(self.zone_bin_center + xLoc / self.prop_bin_width)
+            yBin = int(self.zone_bin_center + yLoc / self.prop_bin_width)
+            
+            bin_value = bins[yBin,xBin]
+            
+            take_approach_score -= bin_value
+            take_count += 1
+            
+        approach_score = swing_approach_score + take_approach_score
+
+        if (swing_count + take_count) == 0:
+            approach_score_avg = 0
+        else:
+            approach_score_avg = approach_score / (swing_count + take_count)
+            
+        if swing_count == 0:
+            swing_approach_score_avg = 0
+        else:
+            swing_approach_score_avg = swing_approach_score / swing_count
+            
+        if take_count == 0:
+            take_approach_score_avg = 0
+        else:
+            take_approach_score_avg = take_approach_score / take_count
+
+        scores = {}
+        scores['approach score'] = round(approach_score,precision)
+        scores['swing approach score'] = round(swing_approach_score,precision)
+        scores['take approach score'] = round(take_approach_score,precision)
+        scores['approach score avg'] = round(approach_score_avg,precision)
+        scores['swing approach score avg'] = round(swing_approach_score_avg,precision)
+        scores['take approach score avg'] = round(take_approach_score_avg,precision)
+        scores['total pitches'] = (swing_count + take_count)
+        scores['swing count'] = swing_count
+        scores['take count'] = take_count
+
+        return scores
+
+    def calculate_two_strike_approach_score(self,df=None,strike_value=2,ball_value=None):
+        if df is None:
+            df = self.data
+
+        if strike_value is None and ball_value is None:
+            _df = df
+        elif ball_value is None:
+            _df = df[df['strikes']==strike_value]
+        elif strike_value is None:
+            _df = df[df['balls']==ball_value]
+        else:
+            _df = df[(df['balls']==ball_value) & (df['strikes']==strike_value)]
+
+        scores = {}
+        scores['correct swing decision'] = self.calculate_correct_swing_decision_rate(df=_df)
+        scores['chase rate'] = self.calculate_chase_rate(df=_df)
+        scores['chase rate scale'] = self.calculate_chase_rate_linear_scaling(df=_df)
+
+        return scores
+
+    def calculate_approach_score_by_counts(self,ball_values=[0,1,2,3],strike_values=[0,1]):
+        approach_scores = {}
+        for ball_value in ball_values:
+            for strike_value in strike_values:
+                count_scores = self.calculate_approach_score(ball_value=ball_value,strike_value=strike_value)
+
+                approach_scores[f'{ball_value}-{strike_value}'] = count_scores
+
+        return approach_scores
+
+    def calculate_total_approach_score(self,ball_values=[0,1,2,3],strike_values=[0,1]):
+        
+        approach_scores = self.calculate_approach_score_by_counts(ball_values=ball_values,strike_values=strike_values)
+
+    def calculate_two_strike_approach_scores_by_count(self):
+        pass
+
 
 class Game:
     def __init__(self,gameID,data):
