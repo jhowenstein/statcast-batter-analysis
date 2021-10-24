@@ -390,6 +390,38 @@ class Batter:
         else:
             return None
 
+    def calculate_stdev_launch_angle(self,start=None,end=None,df=None,precision=1):
+        if df is None:
+            df = self.data
+
+        df = df[df['launch_angle'].notna()]
+        launch_angles = df['launch_angle'].values
+
+        if len(launch_angles) > 0:
+            stdev_la = launch_angles.std()
+            return round(stdev_la,precision)
+        else:
+            return None
+
+    def calculate_average_launch_angle_of_hard_hit(self,df=None,threshold=0.95,start=None,end=None,precision=1):
+        if df is None:
+            df = self.data
+
+        df = df[df['launch_speed'].notna()]
+
+        max_ev = self.calculate_max_exit_velocity(df=df)
+
+        if threshold <= 1:
+            velo_threshold = max_ev * threshold
+        else:
+            velo_threshold = threshold
+
+        _df = df[df['launch_speed'] >= velo_threshold]
+
+        la = self.calculate_average_launch_angle(df=_df)
+
+        return round(la, precision)
+
 
     def calculate_estimated_bat_speed(self,start=None,end=None,df=None,top_percentile=0.1,precision=1):
         if df is None:
@@ -527,7 +559,7 @@ class Batter:
 
         plt.show()
 
-    def calculate_average_to_max_exit_velocity_ratio(self,start=None,end=None,df=None,precision=3,max_ev_samples=3):
+    def calculate_average_to_max_exit_velocity_ratio(self,start=None,end=None,df=None,precision=3,max_ev_samples=5):
         if df is None:
             df = self.data
 
@@ -537,8 +569,7 @@ class Batter:
         ratio = avg_ev/max_ev
         return round(ratio,precision)
 
-
-    def calculate_percent_above_exit_velocity_threshold(self,threshold,start=None,end=None,df=None,precision=3,max_ev_samples=3):
+    def calculate_percent_above_exit_velocity_threshold(self,threshold,start=None,end=None,df=None,precision=3,max_ev_samples=5):
         if df is None:
             df = self.data
 
@@ -997,8 +1028,16 @@ class Batter:
         if df is None:
             df = self.data[self.data['isStrike']==True]
 
+        #print(f'{ball_value}-{strike_value}')
+
+        #print(df.shape)
+
         swings = df[df['isSwing']==True]
         takes = df[df['isSwing']==False]
+
+        #print('Total Swings/Takes')
+        #print(swings.shape)
+        #print(takes.shape)
 
         #print(df.shape)
 
@@ -1009,18 +1048,19 @@ class Batter:
         if ball_value is not None and strike_value is not None:
             _swings = swings[(swings['balls']==ball_value) & (swings['strikes']==strike_value)]
             _takes = takes[(takes['balls']==ball_value) & (takes['strikes']==strike_value)]
-        if ball_value is not None:
+        elif ball_value is not None:
             _swings = swings[swings['balls']==ball_value]
             _takes = takes[takes['balls']==ball_value]
-        if strike_value is not None:
+        elif strike_value is not None:
             _swings = swings[swings['strikes']==strike_value]
             _takes = takes[takes['strikes']==strike_value]
         else:
             _swings = swings
             _takes = takes
 
-        print(_swings.shape)
-        print(_takes.shape)
+        #print('Filtered Swings/Takes by count')
+        #print(_swings.shape)
+        #print(_takes.shape)
 
         #print(f'{ball_value}-{strike_value}')
         #print(_swings.shape[0])
@@ -1107,30 +1147,102 @@ class Batter:
         else:
             _df = df[(df['balls']==ball_value) & (df['strikes']==strike_value)]
 
+        _zone_df = _df[_df['isStrike']==True]
+
         scores = {}
         scores['correct swing decision'] = self.calculate_correct_swing_decision_rate(df=_df)
+        scores['zone swing rate'] = self.calculate_correct_swing_decision_rate(df=_zone_df)
         scores['chase rate'] = self.calculate_chase_rate(df=_df)
         scores['chase rate scale'] = self.calculate_chase_rate_linear_scaling(df=_df)
 
         return scores
 
-    def calculate_approach_score_by_counts(self,ball_values=[0,1,2,3],strike_values=[0,1]):
+    def calculate_approach_score_by_counts(self,df=None,ball_values=[0,1,2,3],strike_values=[0,1]):
+
         approach_scores = {}
         for ball_value in ball_values:
             for strike_value in strike_values:
-                count_scores = self.calculate_approach_score(ball_value=ball_value,strike_value=strike_value)
+                count_scores = self.calculate_approach_score(df=df,ball_value=ball_value,strike_value=strike_value)
 
                 approach_scores[f'{ball_value}-{strike_value}'] = count_scores
 
         return approach_scores
 
-    def calculate_total_approach_score(self,ball_values=[0,1,2,3],strike_values=[0,1]):
+    def calculate_total_approach_score(self,df=None,ball_values=[0,1,2,3],strike_values=[0,1],precision=3):
         
-        approach_scores = self.calculate_approach_score_by_counts(ball_values=ball_values,strike_values=strike_values)
+        approach_scores = self.calculate_approach_score_by_counts(df=df,ball_values=ball_values,strike_values=strike_values)
 
-    def calculate_two_strike_approach_scores_by_count(self):
-        pass
+        total_score = 0
+        total_count = 0
+        for count_scores in approach_scores.values():
+            #print(count_scores['approach score'])
+            total_score += count_scores['approach score']
+            total_count += count_scores['total pitches']
+            
+        scores = {}
+        scores['total score'] = total_score
+        scores['total count'] = total_count
+        scores['total score avg'] = round(total_score / total_count,precision)
+        #print(total_score)
+        #print(total_count)
+        #print(round(total_score/total_count,3))
 
+        return scores
+
+    def calculate_two_strike_approach_scores_by_count(self,ball_values=[0,1,2,3]):
+        strike_value = 2
+        approach_scores = {}
+        for ball_value in ball_values:
+            count_scores = self.calculate_two_strike_approach_score(ball_value=ball_value)
+
+            approach_scores[f'{ball_value}-{strike_value}'] = count_scores
+
+        return approach_scores
+
+    def calculate_discipline_category(self,df=None):
+        if df is None:
+            df = self.data
+
+        scores = {}
+        scores['chase rate'] = self.calculate_chase_rate(df=df)
+        scores['chase rate scale'] = self.calculate_chase_rate_linear_scaling(df=df)
+
+        return scores
+
+    def calculate_swing_category(self,df=None):
+        if df is None:
+            df = self.data
+
+        scores = {}
+        scores['max exit velocity'] = self.calculate_max_exit_velocity(df=df)
+        scores['avg exit velocity'] = self.calculate_average_exit_velocity()
+        scores['avg/max exit velocity ratio'] = self.calculate_average_to_max_exit_velocity_ratio()
+        scores['% hard hit'] = self.calculate_percent_above_exit_velocity_threshold(0.9)
+        scores['avg launch angle'] = self.calculate_average_launch_angle()
+        scores['stdev launch angle'] = self.calculate_stdev_launch_angle()
+        scores['hard hit avg launch angle'] = self.calculate_average_launch_angle_of_hard_hit()
+        
+        scores['zone contact rate'] = self.calculate_zone_contact_rate()
+        scores['outside contact rate'] = self.calculate_outside_contact_rate()
+        scores['quality of contact'] = self.calculate_quality_of_contact()
+        
+        scores['estimated bat speed'] = self.calculate_estimated_bat_speed()
+        scores['estimated attack angle'] = self.calculate_estimated_attack_angle()
+
+        return scores
+
+    def calculate_approach_category(self,df=None):
+
+        total_approach_score = self.calculate_total_approach_score(df=df)
+        twoStrike_approach_score = self.calculate_two_strike_approach_score(df=df)
+
+        scores = {}
+        scores['total approach rate'] = total_approach_score['total score avg']
+        scores['two strike - zone swing rate'] = twoStrike_approach_score['zone swing rate']
+        scores['two strike - chase rate'] = twoStrike_approach_score['chase rate']
+        scores['two strike - chase rate scale'] = twoStrike_approach_score['chase rate scale']
+
+        return scores
 
 class Game:
     def __init__(self,gameID,data):
