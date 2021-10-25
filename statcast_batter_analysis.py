@@ -155,6 +155,23 @@ class Batter:
                 atBat_tag = int(f'{game_ID}-{atBat_number}')
                 self.add_atBat(atBat_tag,atBat_data)
 
+    def atBats_from_df(self,df):
+        atBats = []
+        game_IDs = df['game_pk'].unique()
+        for game_ID in game_IDs:
+            game_data = df[df['game_pk']==game_ID]
+
+            atBat_numbers = game_data['at_bat_number'].unique()
+
+            for atBat_number in atBat_numbers:
+                atBat_data = game_data[game_data['at_bat_number']==atBat_number]
+
+                atBat_tag = int(f'{game_ID}-{atBat_number}')
+                atBats.append(AtBat(atBat_tag,atBat_data))
+
+        return atBats
+
+
     def sort_games(self):
         def sortFunc(game):
             return int(game.date.replace('-',''))
@@ -559,7 +576,7 @@ class Batter:
 
         plt.show()
 
-    def calculate_average_to_max_exit_velocity_ratio(self,start=None,end=None,df=None,precision=3,max_ev_samples=5):
+    def calculate_average_to_max_exit_velocity_ratio(self,start=None,end=None,df=None,precision=3,max_ev_samples=3):
         if df is None:
             df = self.data
 
@@ -569,7 +586,7 @@ class Batter:
         ratio = avg_ev/max_ev
         return round(ratio,precision)
 
-    def calculate_percent_above_exit_velocity_threshold(self,threshold,start=None,end=None,df=None,precision=3,max_ev_samples=5):
+    def calculate_percent_above_exit_velocity_threshold(self,threshold,start=None,end=None,df=None,precision=3,max_ev_samples=3):
         if df is None:
             df = self.data
 
@@ -614,6 +631,42 @@ class Batter:
             df = self.data
 
         woba_df = df[df['woba_denom']==1]
+
+        _df = woba_df[woba_df['isStrike']==False]
+
+        outside_woba = _df['woba_value'].mean()
+
+        return round(outside_woba,precision)
+
+    ### wOBAcon metric calculation
+
+    def calculate_total_wOBAcon(self,df=None, precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
+
+        batter_woba = woba_df['woba_value'].mean()
+
+        return round(batter_woba,precision)
+
+    def calculate_zone_wOBAcon(self,df=None, precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
+
+        _df = woba_df[woba_df['isStrike']==True]
+
+        zone_woba = _df['woba_value'].mean()
+
+        return round(zone_woba,precision)
+
+    def calculate_outside_wOBAcon(self,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
 
         _df = woba_df[woba_df['isStrike']==False]
 
@@ -682,17 +735,17 @@ class Batter:
         return inside_woba, middle_woba, outside_woba
 
     ### Functions for Expected wOBA
-    def calculate_total_xwOBA(self,df=None):
+    def calculate_total_xwOBA(self,df=None,precision=3):
         if df is None:
             df = self.data
 
         woba_df = df[df['woba_denom']==1]
 
-        batter_woba = woba_df['estimated_woba_using_speedangle'].mean().round(3)
+        batter_woba = woba_df['estimated_woba_using_speedangle'].mean()
 
-        return batter_woba
+        return round(batter_woba,precision)
 
-    def calculate_zone_xwOBA(self,df=None):
+    def calculate_zone_xwOBA(self,df=None,precision=3):
         if df is None:
             df = self.data
 
@@ -700,11 +753,11 @@ class Batter:
 
         _df = woba_df[woba_df['isStrike']==True]
 
-        zone_woba = _df['estimated_woba_using_speedangle'].mean().round(3)
+        zone_woba = _df['estimated_woba_using_speedangle'].mean()
 
-        return zone_woba
+        return round(zone_woba,precision)
 
-    def calculate_outside_xwOBA(self,df=None):
+    def calculate_outside_xwOBA(self,df=None,precision=3):
         if df is None:
             df = self.data
 
@@ -712,9 +765,47 @@ class Batter:
 
         _df = woba_df[woba_df['isStrike']==False]
 
-        outside_woba = _df['estimated_woba_using_speedangle'].mean().round(3)
+        outside_woba = _df['estimated_woba_using_speedangle'].mean()
 
-        return outside_woba
+        return round(outside_woba,precision)
+
+    ### Calculations for Expected wOBAcon
+
+    def calculate_total_xwOBAcon(self,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
+
+        batter_woba = woba_df['estimated_woba_using_speedangle'].mean()
+
+        return round(batter_woba,precision)
+
+    def calculate_zone_xwOBAcon(self,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
+
+        _df = woba_df[woba_df['isStrike']==True]
+
+        zone_woba = _df['estimated_woba_using_speedangle'].mean()
+
+        return round(zone_woba,precision)
+
+    def calculate_outside_xwOBAcon(self,df=None,precision=3):
+        if df is None:
+            df = self.data
+
+        woba_df = df[(df['woba_denom']==1) & (df['event']=='hit_into_play')]
+
+        _df = woba_df[woba_df['isStrike']==False]
+
+        outside_woba = _df['estimated_woba_using_speedangle'].mean()
+
+        return round(outside_woba,precision)
+
+    # Expected wOBA by slices
 
     def calculate_horizontal_slice_xwOBA(self,df=None):
         # High
@@ -782,26 +873,47 @@ class Batter:
         self.isContact()
         self.isCorrectDecision()
 
-    def count_plate_appearances(self,start=None,end=None):
-        count = 0
-        for game in self.games:
-            count += len(game.atBats)
+    def count_plate_appearances(self,df=None,start=None,end=None):
+        if df is not None:
+            atBats = self.atBats_from_df(df=df)
+            count = len(atBats)
+        else:
+            count = 0
+            for game in self.games:
+                count += len(game.atBats)
+        
         return count
 
-    def count_strikeouts(self,start=None,end=None):
+    def count_strikeouts(self,df=None,start=None,end=None):
         count = 0
-        for game in self.games:
-            for atBat in game.atBats:
+
+        if df is not None:
+            atBats = self.atBats_from_df(df=df)
+            for atBat in atBats:
                 if atBat.isStrikeout:
                     count += 1
+        else:
+            for game in self.games:
+                for atBat in game.atBats:
+                    if atBat.isStrikeout:
+                        count += 1
+
         return count
 
-    def count_walks(self,start=None,end=None):
+    def count_walks(self,df=None,start=None,end=None):
         count = 0
-        for game in self.games:
-            for atBat in game.atBats:
+
+        if df is not None:
+            atBats = self.atBats_from_df(df=df)
+            for atBat in atBats:
                 if atBat.isWalk:
                     count += 1
+        else:
+            for game in self.games:
+                for atBat in game.atBats:
+                    if atBat.isWalk:
+                        count += 1
+                        
         return count
 
     def calculate_strikeout_rate(self,start=None,end=None,precision=3):
@@ -1198,6 +1310,41 @@ class Batter:
             approach_scores[f'{ball_value}-{strike_value}'] = count_scores
 
         return approach_scores
+
+    def batter_meta_data(self,df=None):
+        if df is None:
+            df = self.data
+
+        meta = {}
+        meta['total pitches'] = self.data.shape[0]
+        meta['babip count'] = self.babip_count
+
+        return meta
+
+
+    def calculate_performance_category(self,df=None):
+        # Total wOBA metrics
+        wOBA = self.calculate_total_wOBA(df=df)
+        xwOBA = self.calculate_total_xwOBA(df=df)
+
+        # Total wOBA on contact metrics
+        wOBAcon = self.calculate_total_wOBA(df=df)
+        xwOBAcon = self.calculate_total_xwOBA(df=df)
+
+        k_rate = self.calculate_strikeout_rate()
+        walk_rate = self.calculate_walk_rate()
+        bb_minus_k_rate = walk_rate - k_rate
+
+        results = {}
+        results['wOBA'] = wOBA
+        results['xwOBA'] = xwOBA
+        results['wOBAcon'] = wOBAcon
+        results['xwOBAcon'] = xwOBAcon
+        results['K%'] = k_rate
+        results['BB%'] = walk_rate
+        results['BB% - K%'] = round(bb_minus_k_rate,3)
+
+        return results
 
     def calculate_discipline_category(self,df=None):
         if df is None:
