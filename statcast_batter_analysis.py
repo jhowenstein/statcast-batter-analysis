@@ -152,7 +152,7 @@ class Batter:
             for atBat_number in atBat_numbers:
                 atBat_data = game_data[game_data['at_bat_number']==atBat_number]
 
-                atBat_tag = int(f'{game_ID}-{atBat_number}')
+                atBat_tag = f'{game_ID}-{atBat_number}'
                 self.add_atBat(atBat_tag,atBat_data)
 
     def atBats_from_df(self,df):
@@ -166,7 +166,7 @@ class Batter:
             for atBat_number in atBat_numbers:
                 atBat_data = game_data[game_data['at_bat_number']==atBat_number]
 
-                atBat_tag = int(f'{game_ID}-{atBat_number}')
+                atBat_tag = f'{game_ID}-{atBat_number}'
                 atBats.append(AtBat(atBat_tag,atBat_data))
 
         return atBats
@@ -741,6 +741,10 @@ class Batter:
 
         woba_df = df[df['woba_denom']==1]
 
+        non_contact = woba_df[woba_df['event']!='hit_into_play']
+        for i in non_contact.index:
+            woba_df.at[i,'estimated_woba_using_speedangle'] = woba_df.at[i,'woba_value']
+        
         batter_woba = woba_df['estimated_woba_using_speedangle'].mean()
 
         return round(batter_woba,precision)
@@ -750,6 +754,10 @@ class Batter:
             df = self.data
 
         woba_df = df[df['woba_denom']==1]
+
+        non_contact = woba_df[woba_df['event']!='hit_into_play']
+        for i in non_contact.index:
+            woba_df.at[i,'estimated_woba_using_speedangle'] = woba_df.at[i,'woba_value']
 
         _df = woba_df[woba_df['isStrike']==True]
 
@@ -762,6 +770,10 @@ class Batter:
             df = self.data
 
         woba_df = df[df['woba_denom']==1]
+
+        non_contact = woba_df[woba_df['event']!='hit_into_play']
+        for i in non_contact.index:
+            woba_df.at[i,'estimated_woba_using_speedangle'] = woba_df.at[i,'woba_value']
 
         _df = woba_df[woba_df['isStrike']==False]
 
@@ -913,7 +925,7 @@ class Batter:
                 for atBat in game.atBats:
                     if atBat.isWalk:
                         count += 1
-                        
+
         return count
 
     def calculate_strikeout_rate(self,start=None,end=None,precision=3):
@@ -1097,6 +1109,23 @@ class Batter:
         ax.set_xlim(-3,3)
         ax.set_ylim(-3,3)
         plt.show()
+
+    def return_games_by_index(self,start=None,end=None):
+        if start is None:
+            start = 0
+        if end is None:
+            end = len(self.games)
+
+        return self.games[start:end]
+
+    def return_data_from_games(self,games):
+        _dfs = []
+        for game in games:
+            _dfs.append(game.data)
+            
+        _df = pd.concat(_dfs)
+        
+        return _df
 
     def return_data_by_index(self,start=None,end=None):
         if start is None:
