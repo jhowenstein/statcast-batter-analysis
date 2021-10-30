@@ -996,7 +996,7 @@ class Batter:
         chase_rate = (batter_incorrect.shape[0] * scaling) / not_strike_df.shape[0]
         return round(chase_rate,precision)
 
-    def calculate_guassian_heatmap(self,start=None,end=None,df=None,bin_sigma=4,scale_key='estimated_woba_using_speedangle',blur_sigma=5):
+    def calculate_guassian_heatmap(self,start=None,end=None,df=None,bin_sigma=4,scale_key='estimated_woba_using_speedangle',blur_sigma=5,normalize=True):
         if df is None:
             df = self.data
 
@@ -1014,6 +1014,7 @@ class Batter:
                 kernel[i,j] = s[i] * s[j]
 
         bins = np.zeros((self.strikezone_bins*3,self.strikezone_bins*3))
+        norm_bins = np.zeros((self.strikezone_bins*3,self.strikezone_bins*3))
 
         _df = df[df['estimated_woba_using_speedangle'].notna()]
 
@@ -1035,6 +1036,12 @@ class Batter:
                 continue
             
             bins[yBin-kernel_width:yBin+kernel_width+1,xBin-kernel_width:xBin+kernel_width+1] += (kernel * pitch.loc[scale_key])
+            norm_bins[yBin-kernel_width:yBin+kernel_width+1,xBin-kernel_width:xBin+kernel_width+1] += kernel
+
+        if normalize:
+            zero_norm_bins = (norm_bins == 0).astype(int)
+            norm_bins += zero_norm_bins     # Makes normalization bins with no values equal to 1 to avoid dividing by zero
+            bins /= norm_bins
 
         blurred_bins = sp.ndimage.gaussian_filter(bins,sigma=blur_sigma)
 
@@ -1062,7 +1069,8 @@ class Batter:
     def plot_wOBA_heatmap(self,df=None,bin_sigma=4,blur_sigma=5):
         bins = self.calculate_guassian_heatmap(df=df,bin_sigma=bin_sigma,blur_sigma=blur_sigma)
 
-        zone_median = np.median(bins[60:121,60:121])
+        #zone_median = np.median(bins[60:121,60:121])
+        zone_median = 0
 
         self.plot_heatmap(bins,scale_reference=zone_median)
 
@@ -1182,7 +1190,7 @@ class Batter:
 
         #print(df.shape)
 
-        bins = self.calculate_guassian_heatmap(df=df)
+        bins = self.calculate_guassian_heatmap(df=df,normalize=False)
 
         #print(f'Bin Max: {np.max(bins):.1f}')
 
