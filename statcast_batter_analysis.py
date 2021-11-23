@@ -171,7 +171,6 @@ class Batter:
 
         return atBats
 
-
     def sort_games(self):
         def sortFunc(game):
             return int(game.date.replace('-',''))
@@ -181,8 +180,11 @@ class Batter:
     def filter_data(self, key, value_key=None, high_value=None, low_value=None, in_place=True):
         pass
         
-    def filter_hit_into_play(self, in_place=True):
-        _df = self.data[self.data['event']=='hit_into_play']
+    def filter_hit_into_play(self, df=None, in_place=False):
+        if df is None:
+            df = self.data
+
+        _df = df[df['event']=='hit_into_play']
 
         if in_place:
             self.data = _df
@@ -319,6 +321,34 @@ class Batter:
             self.data = _df
         else:
             return _df
+
+    def return_fastball_df(self,df=None):
+        if df is None:
+            df = self.data
+
+        fastballs = ['FF','FC','FS','FA','SI','FT']
+
+        _df = self.filter_data_by_pitch_type(pitch_type=fastballs,df=df)
+
+        return _df
+
+    def return_offspeed_df(self,df=None):
+        if df is None:
+            df = self.data
+
+        offspeed = ['SL','CU','CH','KC','KN','SC','CS']
+
+        _df = self.filter_data_by_pitch_type(pitch_type=offspeed,df=df)
+
+        return _df
+
+    def calculate_babip_count(self,df=None):
+        if df is None:
+            df = self.data
+
+        babip_df = df[df['event']=='hit_into_play']
+
+        return babip_df.shape[0]
 
     def isStrike(self):
         self.data['isStrike'] = (self.data['plate_x'] >= self.sz_left) & (self.data['plate_x'] <= self.sz_right) & (
@@ -928,15 +958,15 @@ class Batter:
 
         return count
 
-    def calculate_strikeout_rate(self,start=None,end=None,precision=3):
-        K = self.count_strikeouts(start=start,end=end)
-        PA = self.count_plate_appearances(start=start,end=end)
+    def calculate_strikeout_rate(self,df=None,precision=3):
+        K = self.count_strikeouts(df=df)
+        PA = self.count_plate_appearances(df=df)
         rate = K / PA
         return round(rate, precision)
     
-    def calculate_walk_rate(self,start=None,end=None,precision=3):
-        K = self.count_walks(start=start,end=end)
-        PA = self.count_plate_appearances(start=start,end=end)
+    def calculate_walk_rate(self,df=None,precision=3):
+        K = self.count_walks(df=df)
+        PA = self.count_plate_appearances(df=df)
         rate = K / PA
         return round(rate, precision)
 
@@ -1050,7 +1080,7 @@ class Batter:
     def plot_heatmap(self,bins,scale_reference=0,display=True,output=False):
         fig,ax = plt.subplots(figsize=(10,10))
 
-        im = ax.matshow(bins - scale_reference,cmap='bwr')
+        im = ax.matshow(bins - scale_reference,cmap='bwr',vmin=0,vmax=.75)
         ax.plot([60,120,120,60,60],[120,120,60,60,120],color='w')
         ax.plot()
         plt.colorbar(im)
@@ -1066,13 +1096,15 @@ class Batter:
         if display:
             plt.show()
 
-    def plot_wOBA_heatmap(self,df=None,bin_sigma=4,blur_sigma=5):
+    def plot_wOBA_heatmap(self,df=None,bin_sigma=4,blur_sigma=5,scale_reference=None):
         bins = self.calculate_guassian_heatmap(df=df,bin_sigma=bin_sigma,blur_sigma=blur_sigma)
 
-        #zone_median = np.median(bins[60:121,60:121])
-        zone_median = 0
+        if scale_reference is None:
+            scale_reference = 0
+        elif scale_reference == 'median':
+            scale_reference = np.median(bins[60:121,60:121])
 
-        self.plot_heatmap(bins,scale_reference=zone_median)
+        self.plot_heatmap(bins,scale_reference=scale_reference)
 
     def plot_pitch_scatter(self,df=None):
         if df is None:
@@ -1228,6 +1260,9 @@ class Batter:
             
             xBin = int(self.zone_bin_center + xLoc / self.prop_bin_width)
             yBin = int(self.zone_bin_center + yLoc / self.prop_bin_width)
+
+            xBin = max(0,min(xBin,3*self.strikezone_bins-1))
+            yBin = max(0,min(yBin,3*self.strikezone_bins-1))
             
             bin_value = bins[yBin,xBin]
             
@@ -1247,6 +1282,9 @@ class Batter:
             
             xBin = int(self.zone_bin_center + xLoc / self.prop_bin_width)
             yBin = int(self.zone_bin_center + yLoc / self.prop_bin_width)
+
+            xBin = max(0,min(xBin,3*self.strikezone_bins-1))
+            yBin = max(0,min(yBin,3*self.strikezone_bins-1))
             
             bin_value = bins[yBin,xBin]
             
@@ -1353,11 +1391,10 @@ class Batter:
             df = self.data
 
         meta = {}
-        meta['total pitches'] = self.data.shape[0]
-        meta['babip count'] = self.babip_count
+        meta['total pitches'] = df.shape[0]
+        meta['babip count'] = self.calculate_babip_count(df=df)
 
         return meta
-
 
     def calculate_performance_category(self,df=None):
         # Total wOBA metrics
@@ -1365,11 +1402,11 @@ class Batter:
         xwOBA = self.calculate_total_xwOBA(df=df)
 
         # Total wOBA on contact metrics
-        wOBAcon = self.calculate_total_wOBA(df=df)
-        xwOBAcon = self.calculate_total_xwOBA(df=df)
+        wOBAcon = self.calculate_total_wOBAcon(df=df)
+        xwOBAcon = self.calculate_total_xwOBAcon(df=df)
 
-        k_rate = self.calculate_strikeout_rate()
-        walk_rate = self.calculate_walk_rate()
+        k_rate = self.calculate_strikeout_rate(df=df)
+        walk_rate = self.calculate_walk_rate(df=df)
         bb_minus_k_rate = walk_rate - k_rate
 
         results = {}
@@ -1384,8 +1421,6 @@ class Batter:
         return results
 
     def calculate_discipline_category(self,df=None):
-        if df is None:
-            df = self.data
 
         scores = {}
         scores['chase rate'] = self.calculate_chase_rate(df=df)
@@ -1394,24 +1429,22 @@ class Batter:
         return scores
 
     def calculate_swing_category(self,df=None):
-        if df is None:
-            df = self.data
 
         scores = {}
         scores['max exit velocity'] = self.calculate_max_exit_velocity(df=df)
-        scores['avg exit velocity'] = self.calculate_average_exit_velocity()
-        scores['avg/max exit velocity ratio'] = self.calculate_average_to_max_exit_velocity_ratio()
-        scores['% hard hit'] = self.calculate_percent_above_exit_velocity_threshold(0.9)
-        scores['avg launch angle'] = self.calculate_average_launch_angle()
-        scores['stdev launch angle'] = self.calculate_stdev_launch_angle()
-        scores['hard hit avg launch angle'] = self.calculate_average_launch_angle_of_hard_hit()
+        scores['avg exit velocity'] = self.calculate_average_exit_velocity(df=df)
+        scores['avg/max exit velocity ratio'] = self.calculate_average_to_max_exit_velocity_ratio(df=df)
+        scores['% hard hit'] = self.calculate_percent_above_exit_velocity_threshold(0.9,df=df)
+        scores['avg launch angle'] = self.calculate_average_launch_angle(df=df)
+        scores['stdev launch angle'] = self.calculate_stdev_launch_angle(df=df)
+        scores['hard hit avg launch angle'] = self.calculate_average_launch_angle_of_hard_hit(df=df)
         
-        scores['zone contact rate'] = self.calculate_zone_contact_rate()
-        scores['outside contact rate'] = self.calculate_outside_contact_rate()
-        scores['quality of contact'] = self.calculate_quality_of_contact()
+        scores['zone contact rate'] = self.calculate_zone_contact_rate(df=df)
+        scores['outside contact rate'] = self.calculate_outside_contact_rate(df=df)
+        scores['quality of contact'] = self.calculate_quality_of_contact(df=df)
         
-        scores['estimated bat speed'] = self.calculate_estimated_bat_speed()
-        scores['estimated attack angle'] = self.calculate_estimated_attack_angle()
+        scores['estimated bat speed'] = self.calculate_estimated_bat_speed(df=df)
+        scores['estimated attack angle'] = self.calculate_estimated_attack_angle(df=df)
 
         return scores
 
